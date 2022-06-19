@@ -10,10 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.RecursiveTask;
+import java.util.concurrent.*;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -50,7 +47,25 @@ final class ParallelWebCrawler implements WebCrawler {
 
   @Override
   public CrawlResult crawl(List<String> startingUrls) {
-    return new CrawlResult.Builder().build();
+    Instant deadline = clock.instant().plus(timeout);
+    ConcurrentMap<String, Integer> counts = new ConcurrentHashMap<>();
+    ConcurrentSkipListSet<String> visitedUrls = new ConcurrentSkipListSet<>();
+
+    for (String url : startingUrls) {
+      pool.invoke(new CrawInternalTask(url,deadline,maxDepth,counts,visitedUrls));
+    }
+
+    if (counts.isEmpty()) {
+      return new CrawlResult.Builder()
+              .setWordCounts(counts)
+              .setUrlsVisited(visitedUrls.size())
+              .build();
+    }
+
+    return new CrawlResult.Builder()
+            .setWordCounts(WordCounts.sort(counts, popularWordCount))
+            .setUrlsVisited(visitedUrls.size())
+            .build();
   }
 
   @Override
